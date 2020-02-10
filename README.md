@@ -1,10 +1,10 @@
 ---
 page_type: sample
 languages:
-- csharp
+- C++
 products:
-- dotnet
-description: "Add 150 character max description"
+- Windows 10
+description: "Simple demonstration of using GetContentRects in a Win32 application."
 urlFragment: "update-this-to-unique-url-stub"
 ---
 
@@ -18,11 +18,12 @@ Guidance on onboarding samples to docs.microsoft.com/samples: https://review.doc
 Taxonomies for products and languages: https://review.docs.microsoft.com/new-hope/information-architecture/metadata/taxonomies?branch=master
 -->
 
-Give a short description for your sample here. What does it do and why is it important?
+This sample shows how to use the `GetContentRects` API to take advantage of dual-screen devices and to provide
+the best experience on multi-display PCs. The sample uses a poly-filled version of the API based on [`EnumDisplayMonitors`](https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumdisplaymonitors) so you can test it on existing Desktop PCs before
+Windows 10X is released.
 
 ## Contents
 
-Outline the file contents of the repository. It helps users navigate the codebase, build configuration and any related assets.
 
 | File/folder       | Description                                |
 |-------------------|--------------------------------------------|
@@ -35,19 +36,34 @@ Outline the file contents of the repository. It helps users navigate the codebas
 
 ## Prerequisites
 
-Outline the required components and tools that a user might need to have on their machine in order to run the sample. This can be anything from frameworks, SDKs, OS versions or IDE releases.
+This requires Visual Studio 2019 and a recent version of the Windows 10 Insider SDK. It does not require a 
+Windows 10X device or the Windows 10X emulator, but they can be used as well.
 
 ## Setup
 
-Explain how to prepare the sample once the user clones or downloads the repository. The section should outline every step necessary to install dependencies and set up any settings (for example, API keys and output folders).
+Clone the sample and then build the `DualScreenWin32` project. There is also an MSIX project for deploying the application to other devices (including the Windows 10X emulator). MSIX is the recommended way of packaging applications for Windows 10.
 
 ## Running the sample
 
-Outline step-by-step instructions to execute the sample and see its output. Include steps for executing the sample from the IDE, starting specific services in the Azure portal or anything related to the overall launch of the code.
+By default the application draws a cyan rectangle with some information about the window's client area. 
+
+If you have the Windows 10X
+emulator (or a dual-screen device), you can snap the app across both screens to see the app reconfigure itself 
+to draw one screen in cyan and the other in yellow. 
+
+If you have a Desktop PC with multiple monitors, you can simply move the window between two monitors
+to get the same effect as a dual-screen device. You might choose to update your existing Win32 apps even
+if you don't specifically intend to target Windows 10X since you can improve the experience for your
+existing Desktop users with multiple monitors.
+
+If you have a single-screen Desktop, you can use the `Tools` -> `Toggle modes` menu item to emulate
+different dual-screen configurations. Note that even on a single-screen device, if you move the window
+partially off-screen, you will see the application responds and ensures the content remains on-screen.
 
 ## Key concepts
 
-Provide users with more context on the tools and services used in the sample. Explain some of the code that is being used and how services interact with each other.
+The key concept here is the use of the `GetContentRects` API to query the OS for the available ares where the application can draw. The app can still render content across the entire client area (spanning the gap on a 
+dual-screen device, or spanning monitors on a Desktop), but being aware of the distinct content regions will enable you to optimize the experience.
 
 ## Contributing
 

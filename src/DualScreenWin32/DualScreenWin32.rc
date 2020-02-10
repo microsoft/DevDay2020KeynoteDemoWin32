@@ -32,7 +32,7 @@ LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
-IDI_MINDTHEGAP          ICON                    "MindTheGap.ico"
+IDI_DualScreenWin32          ICON                    "DualScreenWin32.ico"
 
 IDI_SMALL               ICON                    "small.ico"
 
@@ -42,50 +42,22 @@ IDI_SMALL               ICON                    "small.ico"
 // Menu
 //
 
-IDC_MINDTHEGAP MENU
+IDC_DualScreenWin32 MENU
 BEGIN
-    POPUP "&File"
-    BEGIN
-        MENUITEM "E&xit",                       IDM_EXIT
-    END
-    POPUP "&Tools"
-    BEGIN
-        MENUITEM "Toggle &modes",               ID_TOOLS_TOGGLEMODES
-    END
-    POPUP "Help"
-    BEGIN
-        MENUITEM "About",                       ID_HELP_ABOUT
-    END
+POPUP "&File"
+BEGIN
+MENUITEM "E&xit", IDM_EXIT
+END
+POPUP "&Tools"
+BEGIN
+MENUITEM "Toggle &modes", ID_TOOLS_TOGGLEMODES
+END
+POPUP "Help"
+BEGIN
+MENUITEM "About", ID_HELP_ABOUT
+END
 END
 
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// Accelerator
-//
-
-IDC_MINDTHEGAP ACCELERATORS
-BEGIN
-    "?",            IDM_ABOUT,              ASCII,  ALT
-    "/",            IDM_ABOUT,              ASCII,  ALT
-END
-
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// Dialog
-//
-
-IDD_ABOUTBOX DIALOGEX 0, 0, 170, 62
-STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "About MindTheGap"
-FONT 8, "MS Shell Dlg", 0, 0, 0x1
-BEGIN
-    ICON            IDR_MAINFRAME,IDC_STATIC,14,14,21,20
-    LTEXT           "MindTheGap, Version 1.0",IDC_STATIC,42,14,114,8,SS_NOPREFIX
-    LTEXT           "Copyright (c) 2020",IDC_STATIC,42,26,114,8
-    DEFPUSHBUTTON   "OK",IDOK,113,41,50,14,WS_GROUP
-END
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -96,13 +68,13 @@ END
 #ifdef APSTUDIO_INVOKED
 GUIDELINES DESIGNINFO
 BEGIN
-    IDD_ABOUTBOX, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 163
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 55
-    END
+IDD_ABOUTBOX, DIALOG
+BEGIN
+LEFTMARGIN, 7
+RIGHTMARGIN, 163
+TOPMARGIN, 7
+BOTTOMMARGIN, 55
+END
 END
 #endif    // APSTUDIO_INVOKED
 
@@ -113,26 +85,26 @@ END
 // TEXTINCLUDE
 //
 
-1 TEXTINCLUDE 
+1 TEXTINCLUDE
 BEGIN
-    "resource.h\0"
+"resource.h\0"
 END
 
-2 TEXTINCLUDE 
+2 TEXTINCLUDE
 BEGIN
-    "#ifndef APSTUDIO_INVOKED\r\n"
-    "#include ""targetver.h""\r\n"
-    "#endif\r\n"
-    "#define APSTUDIO_HIDDEN_SYMBOLS\r\n"
-    "#include ""windows.h""\r\n"
-    "#undef APSTUDIO_HIDDEN_SYMBOLS\r\n"
-    "\0"
+"#ifndef APSTUDIO_INVOKED\r\n"
+"#include ""targetver.h""\r\n"
+"#endif\r\n"
+"#define APSTUDIO_HIDDEN_SYMBOLS\r\n"
+"#include ""windows.h""\r\n"
+"#undef APSTUDIO_HIDDEN_SYMBOLS\r\n"
+"\0"
 END
 
-3 TEXTINCLUDE 
+3 TEXTINCLUDE
 BEGIN
-    "\r\n"
-    "\0"
+"\r\n"
+"\0"
 END
 
 #endif    // APSTUDIO_INVOKED
@@ -145,8 +117,8 @@ END
 
 STRINGTABLE
 BEGIN
-    IDS_APP_TITLE           "Dual-screen GDI demo"
-    IDC_MINDTHEGAP          "MINDTHEGAP"
+IDS_APP_TITLE           "Dual-screen GDI demo"
+IDC_DualScreenWin32          "DualScreenWin32"
 END
 
 #endif    // English (United States) resources

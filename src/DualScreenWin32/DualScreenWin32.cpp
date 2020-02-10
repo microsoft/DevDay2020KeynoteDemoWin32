@@ -1,7 +1,7 @@
-// MindTheGap.cpp : Defines the entry point for the application.
+// DualScreenWin32.cpp : Defines the entry point for the application.
 
 #include "stdafx.h"
-#include "MindTheGap.h"
+#include "DualScreenWin32.h"
 #include "ScreenInfo.h"
 #include <string>
 
@@ -39,7 +39,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     // Initialize global strings
     LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
-    LoadStringW(hInstance, IDC_MINDTHEGAP, szWindowClass, MAX_LOADSTRING);
+    LoadStringW(hInstance, IDC_DualScreenWin32, szWindowClass, MAX_LOADSTRING);
     MyRegisterClass(hInstance);
 
     // Perform application initialization:
@@ -48,7 +48,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         return FALSE;
     }
 
-    HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_MINDTHEGAP));
+    HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_DualScreenWin32));
 
     MSG msg;
 
@@ -81,10 +81,10 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
     wcex.cbClsExtra = 0;
     wcex.cbWndExtra = 0;
     wcex.hInstance = hInstance;
-    wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_MINDTHEGAP));
+    wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_DualScreenWin32));
     wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-    wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_MINDTHEGAP);
+    wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_DualScreenWin32);
     wcex.lpszClassName = szWindowClass;
     wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
 
@@ -148,7 +148,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
         // Update our status text for new info
         static wchar_t buffer[500];
-        swprintf_s(buffer, L"Rects: %d%s, client area: %d x %d", screenInfo.GetRectCount(), 
+        swprintf_s(buffer, L"Rects: %d%s, client area: %d x %d", screenInfo.GetRectCount(),
             screenInfo.IsEmulating() ? L" (emu'ed)" : L"",
             Width(screenInfo.GetWindowBounds()), Height(screenInfo.GetWindowBounds()));
         SetWindowText(textWnd, buffer);

@@ -1,14 +1,14 @@
 //{{NO_DEPENDENCIES}}
 // Microsoft Visual C++ generated include file.
-// Used by MindTheGap.rc
+// Used by DualScreenWin32.rc
 //
 #define IDC_MYICON                      2
 #define IDS_APP_TITLE                   103
 #define IDM_ABOUT                       104
 #define IDM_EXIT                        105
-#define IDI_MINDTHEGAP                  107
+#define IDI_DualScreenWin32                  107
 #define IDI_SMALL                       108
-#define IDC_MINDTHEGAP                  109
+#define IDC_DualScreenWin32                  109
 #define IDR_MAINFRAME                   128
 #define ID_HELP_ABOUT                   32772
 #define ID_TOOLS_TOGGLEMODES            32773
