@@ -7,18 +7,17 @@
   IgnorableNamespaces="uap rescap">
 
   <Identity
-    Name="DualScreenGDI"
-    Publisher="CN=&quot;Microsoft SDR Demo &quot;"
-    Version="1.0.8.0" />
+    Name="Win32DualScreenDemo"
+    Publisher="CN=Dual screen demo"
+    Version="1.0.1.0" />
 
   <Properties>
     <DisplayName>Dual Screen GDI Demo</DisplayName>
-    <PublisherDisplayName>Microsoft SDR Demo</PublisherDisplayName>
+    <PublisherDisplayName>Dual screen demo</PublisherDisplayName>
     <Logo>Images\StoreLogo.png</Logo>
   </Properties>
 
   <Dependencies>
-    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.0.0" MaxVersionTested="10.0.0.0" />
     <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.14393.0" MaxVersionTested="10.0.14393.0" />
   </Dependencies>
 
@@ -31,19 +30,19 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="MindTheGapPackage"
-        Description="MindTheGapPackage"
+        DisplayName="Win32 dual-screen demo"
+        Description="Win32 dual-screen demo"
         BackgroundColor="transparent"
         Square150x150Logo="Images\Square150x150Logo.png"
         Square44x44Logo="Images\Square44x44Logo.png">
-        <uap:DefaultTile Wide310x150Logo="Images\Wide310x150Logo.png" />
+        <uap:DefaultTile Wide310x150Logo="Images\Wide310x150Logo.png"  Square71x71Logo="Images\SmallTile.png" Square310x310Logo="Images\LargeTile.png"/>
         <uap:SplashScreen Image="Images\SplashScreen.png" />
+        <uap:LockScreen BadgeLogo="Images\BadgeLogo.png" Notification="badge"/>
       </uap:VisualElements>
     </Application>
   </Applications>
 
   <Capabilities>
-    <Capability Name="internetClient" />
     <rescap:Capability Name="runFullTrust" />
   </Capabilities>
 </Package>

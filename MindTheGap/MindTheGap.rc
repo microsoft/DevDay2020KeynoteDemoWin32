@@ -46,8 +46,11 @@ IDC_MINDTHEGAP MENU
 BEGIN
     POPUP "&File"
     BEGIN
-        MENUITEM "&Refresh",                    ID_FILE_REFRESH
         MENUITEM "E&xit",                       IDM_EXIT
+    END
+    POPUP "&Tools"
+    BEGIN
+        MENUITEM "Toggle &modes",               ID_TOOLS_TOGGLEMODES
     END
     POPUP "Help"
     BEGIN
