@@ -8,15 +8,13 @@
 #define MAX_LOADSTRING 100
 
 const int MARGIN = 5;
-const int DOUBLE_MARGIN = MARGIN * 2;
-const int TEXT_HEIGHT = 40;
+const int TEXT_HEIGHT = 32;
 
 ScreenInfo screenInfo{};
 HWND hwnd;
 HWND textWnd;
 HFONT font;
-
-BOOL CALLBACK PaintRect(HDC hdc, const ScreenInfo* info, unsigned int rectIndex);
+HPEN pen;
 
 #pragma region Default project template stuff
 
@@ -115,13 +113,12 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
         return FALSE;
     }
 
+    font = CreateFontA(30, 0, 0, 0, 100, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, "Consolas");
+    pen = CreatePen(PS_SOLID, 2, RGB(128, 128, 128));
+
     textWnd = CreateWindowW(L"STATIC", L"info", WS_CHILD | WS_VISIBLE | SS_CENTER | WS_BORDER, 0, 0, 0, 0, hWnd, 0, hInst, nullptr);
     SetWindowTextW(textWnd, L"");
-    font = CreateFontA(36, 0, 0, 0, 100, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, "Consolas");
-    if (font != nullptr)
-    {
-        SendMessage(textWnd, WM_SETFONT, (WPARAM)font, TRUE);
-    }
+    SendMessage(textWnd, WM_SETFONT, (WPARAM)font, TRUE);
 
     ShowWindow(hWnd, nCmdShow);
     UpdateWindow(hWnd);
@@ -144,34 +141,71 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         // Update the configuration of the screens
         screenInfo.Update(hWnd);
 
+        // Figure out which screen has the most available space, and then move the
+        // simple status text to that screen
+        auto bestScreen = Shrink(screenInfo.GetRect(screenInfo.GetTallestOrWidestIndex()), MARGIN);
+        MoveWindow(textWnd, bestScreen.left, bestScreen.top, Width(bestScreen), TEXT_HEIGHT, TRUE);
+
+        // Update our status text for new info
+        static wchar_t buffer[500];
+        swprintf_s(buffer, L"Rects: %d%s, client area: %d x %d", screenInfo.GetRectCount(), 
+            screenInfo.IsEmulating() ? L" (emu'ed)" : L"",
+            Width(screenInfo.GetWindowBounds()), Height(screenInfo.GetWindowBounds()));
+        SetWindowText(textWnd, buffer);
+
         // Force re-draw
         InvalidateRect(hWnd, nullptr, true);
         break;
     }
     case WM_PAINT:
     {
-        // Figure out which screen has the most available space, and then move the
-        // simple status text to that screen
-        auto bestScreen = screenInfo.GetRect(screenInfo.GetTallestOrWidestIndex());
-        MoveWindow(textWnd, bestScreen.left + MARGIN, bestScreen.top + MARGIN, Width(&bestScreen) - DOUBLE_MARGIN, TEXT_HEIGHT, TRUE);
-
-        // Update our status text for new info
-        wchar_t buffer[200];
-        swprintf_s(buffer, L"Rects: %d, client area: %d x %d", 
-            screenInfo.GetRectCount(), 
-            Width(&screenInfo.WindowBounds), 
-            Height(&screenInfo.WindowBounds));
-
-        SetWindowText(textWnd, buffer);
-
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hWnd, &ps);
+        HBRUSH brush{};
+
+        auto oldFont = SelectObject(hdc, font);
+        auto oldPen = SelectObject(hdc, pen);
         for (unsigned int i = 0; i < screenInfo.GetRectCount(); ++i)
         {
-            // Paint each rectangle one at a time.
-            PaintRect(hdc, &screenInfo, i);
+            auto thisRect(screenInfo.GetRect(i));
+
+            if (i % 2)
+            {
+                brush = CreateSolidBrush(RGB(255, 255, 0));
+            }
+            else
+            {
+                brush = CreateSolidBrush(RGB(0, 255, 255));
+            }
+
+            static wchar_t buffer[500];
+            swprintf_s(buffer, L"Rect #%d, size: %d x %d\r\n(%d, %d) - (%d, %d)",
+                i, Width(thisRect), Height(thisRect),
+                thisRect.left, thisRect.top, thisRect.right - 1, thisRect.bottom - 1);
+
+
+            // Shrink the rect for a bit of a margin
+            auto shrunkRect = Shrink(thisRect, MARGIN);
+
+            // Add space for the heading text unless we're on the bottom-screen of a dual-
+            // screen device
+            if (!(i == 1 && screenInfo.GetSplitKind() == SplitKind::Horizontal))
+            {
+                shrunkRect.top += TEXT_HEIGHT + MARGIN;
+            }
+
+            auto oldBrush = SelectObject(hdc, brush);
+            Rectangle(hdc, shrunkRect.left, shrunkRect.top, shrunkRect.right, shrunkRect.bottom);
+
+            // Shrink again for another margin
+            shrunkRect = Shrink(shrunkRect, MARGIN);
+            DrawTextW(hdc, buffer, (int)wcslen(buffer), &shrunkRect, DT_CENTER);
+
+            SelectObject(hdc, oldBrush);
+            DeleteObject(brush);
         }
-        //EnumDisplayMonitors(hdc, nullptr, PaintEachMonitor, (LPARAM)&screenInfo);
+        SelectObject(hdc, oldFont);
+        SelectObject(hdc, oldPen);
         EndPaint(hWnd, &ps);
     }
     case WM_COMMAND:
@@ -182,12 +216,62 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         case IDM_EXIT:
             DestroyWindow(hWnd);
             break;
-        case ID_FILE_REFRESH:
-            SendMessageA(hWnd, WM_SIZE, 0, 0);
-            InvalidateRect(hWnd, nullptr, TRUE);
-            break;
+
         case ID_HELP_ABOUT:
             MessageBoxA(hWnd, (std::string("Build timestamp: ") + __TIMESTAMP__).c_str(), "About App", MB_OK);
+            break;
+
+        case ID_TOOLS_TOGGLEMODES:
+        {
+            bool currentlyEmulating{ screenInfo.IsEmulating() };
+            bool actuallyMultipleScreens{ ScreenInfo::AreMultipleScreensPresent() };
+
+            if (currentlyEmulating)
+            {
+                if (actuallyMultipleScreens)
+                {
+                    screenInfo.EmulateScreens(0, SplitKind::None);
+                    screenInfo.Update(hWnd);
+                }
+                else
+                {
+                    if (screenInfo.GetSplitKind() == SplitKind::Vertical)
+                    {
+                        screenInfo.EmulateScreens(2, SplitKind::Horizontal);
+                    }
+                    else if (screenInfo.GetRectCount() == 2)
+                    {
+                        // Note there's actually a difference between 1 emulated screen
+                        // and no emulation even on a single-screen Desktop device. If you
+                        // are emulating 1 screen, the app will always draw the entire
+                        // client area of the window, but if you are not emulating 1 screen
+                        // then the app will not draw into any client area that is off-screen.
+                        screenInfo.EmulateScreens(1, SplitKind::None);
+                    }
+                    else
+                    {
+                        screenInfo.EmulateScreens(0, SplitKind::None);
+                        screenInfo.Update(hWnd);
+                    }
+                }
+            }
+            else
+            {
+                if (actuallyMultipleScreens)
+                {
+                    screenInfo.EmulateScreens(1, SplitKind::None);
+                }
+                else
+                {
+                    screenInfo.EmulateScreens(2, SplitKind::Vertical);
+                }
+            }
+
+            SendMessageA(hWnd, WM_SIZE, 0, 0);
+
+            break;
+        }
+
         default:
             return DefWindowProc(hWnd, message, wParam, lParam);
         }
@@ -201,48 +285,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     default:
         return DefWindowProc(hWnd, message, wParam, lParam);
     }
+
     return 0;
-}
-
-BOOL CALLBACK PaintRect(HDC hdc, const ScreenInfo* info, unsigned int rectIndex)
-{
-    auto rect = info->GetRect(rectIndex);
-    auto originalRect = rect;
-
-    // Main info is at the top of the first (left / top) screen only. When in
-    // double-landscape, the bottom screen doesn't need the extra margin.
-    if (!(info->SplitKind == SplitKind::Horizontal && rectIndex > 0))
-    {
-        rect.top += TEXT_HEIGHT + MARGIN;
-    }
-
-    HBRUSH brush{};
-
-    if (rectIndex == 0)
-    {
-        brush = CreateSolidBrush(RGB(255, 255, 0));
-    }
-    else
-    {
-        brush = CreateSolidBrush(RGB(0, 255, 255));
-    }
-
-    auto oldBrush = SelectObject(hdc, brush);
-    auto oldFont = SelectObject(hdc, font);
-    auto shrunkRect = Shrink(&rect, MARGIN);
-    Rectangle(hdc, shrunkRect.left, shrunkRect.top, shrunkRect.right, shrunkRect.bottom);
-
-    wchar_t buffer[200];
-    swprintf_s(buffer, L"Rect %d, size: %d x %d\r\n(%d, %d) - (%d, %d)", 
-        rectIndex, Width(&originalRect), Height(&originalRect),
-        originalRect.left, originalRect.top, originalRect.right - 1, originalRect.bottom - 1);
-
-    shrunkRect = Shrink(&shrunkRect, MARGIN);
-    DrawTextW(hdc, buffer, (int) wcslen(buffer), &shrunkRect, DT_CENTER);
-
-    SelectObject(hdc, oldBrush);
-    SelectObject(hdc, oldFont);
-    DeleteObject(brush);
-
-    return TRUE;
 }

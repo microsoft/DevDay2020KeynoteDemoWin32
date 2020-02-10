@@ -149,7 +149,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="MindTheGap.h" />
-    <ClInclude Include="polyfill.h" />
+    <ClInclude Include="contentrects.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="ScreenInfo.h" />
     <ClInclude Include="stdafx.h" />

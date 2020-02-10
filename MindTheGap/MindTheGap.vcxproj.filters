@@ -30,7 +30,7 @@
     <ClInclude Include="ScreenInfo.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="polyfill.h">
+    <ClInclude Include="contentrects.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
