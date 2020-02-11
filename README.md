@@ -5,7 +5,6 @@ languages:
 products:
 - Windows 10
 description: "Simple demonstration of using GetContentRects in a Win32 application."
-urlFragment: "update-this-to-unique-url-stub"
 ---
 
 # Official Microsoft Sample
