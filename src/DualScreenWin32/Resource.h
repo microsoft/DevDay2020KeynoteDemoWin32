@@ -2,16 +2,15 @@
 // Microsoft Visual C++ generated include file.
 // Used by DualScreenWin32.rc
 //
-#define IDC_MYICON                      2
 #define IDS_APP_TITLE                   103
 #define IDM_ABOUT                       104
 #define IDM_EXIT                        105
-#define IDI_DualScreenWin32                  107
-#define IDI_SMALL                       108
-#define IDC_DualScreenWin32                  109
+#define IDM_APP_MENU                    106
+#define IDI_DualScreenWin32             107
+#define IDC_DualScreenWin32             109
 #define IDR_MAINFRAME                   128
-#define ID_HELP_ABOUT                   32772
-#define ID_TOOLS_TOGGLEMODES            32773
+#define IDM_HELP_ABOUT                   32772
+#define IDM_TOOLS_TOGGLEMODES            32773
 #define IDC_STATIC                      -1
 
 // Next default values for new objects

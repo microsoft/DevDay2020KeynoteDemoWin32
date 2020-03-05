@@ -8,13 +8,15 @@
 #define MAX_LOADSTRING 100
 
 const int MARGIN = 5;
-const int TEXT_HEIGHT = 32;
+const int FONT_SIZE = 16;
+const int TEXT_HEIGHT = 20;
+using namespace dual_screen;
 
 ScreenInfo screenInfo{};
 HWND hwnd;
 HWND textWnd;
-HFONT font;
-HPEN pen;
+HBRUSH oddBrush;
+HBRUSH evenBrush;
 
 #pragma region Default project template stuff
 
@@ -48,18 +50,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         return FALSE;
     }
 
-    HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_DualScreenWin32));
-
     MSG msg;
 
     // Main message loop:
     while (GetMessage(&msg, nullptr, 0, 0))
     {
-        if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
-        {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-        }
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
     }
 
     return (int)msg.wParam;
@@ -76,7 +73,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 
     wcex.cbSize = sizeof(WNDCLASSEX);
 
-    wcex.style = CS_HREDRAW | CS_VREDRAW;
+    wcex.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
     wcex.lpfnWndProc = WndProc;
     wcex.cbClsExtra = 0;
     wcex.cbWndExtra = 0;
@@ -84,9 +81,9 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
     wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_DualScreenWin32));
     wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-    wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_DualScreenWin32);
+    wcex.lpszMenuName = MAKEINTRESOURCEW(IDM_APP_MENU);
     wcex.lpszClassName = szWindowClass;
-    wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+    wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_DualScreenWin32));
 
     return RegisterClassExW(&wcex);
 }
@@ -113,8 +110,15 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
         return FALSE;
     }
 
-    font = CreateFontA(30, 0, 0, 0, 100, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, "Consolas");
-    pen = CreatePen(PS_SOLID, 2, RGB(128, 128, 128));
+    HFONT font = CreateFontA(FONT_SIZE, 0, 0, 0, 100, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, "Consolas");
+    HPEN pen = CreatePen(PS_SOLID, 2, RGB(128, 128, 128));
+    oddBrush = CreateSolidBrush(RGB(255, 255, 0));
+    evenBrush = CreateSolidBrush(RGB(0, 255, 255));
+
+    // CS_OWNDC; can select once then leave them.
+    HDC hDc = GetDC(hWnd);
+    SelectObject(hDc, font);
+    SelectObject(hDc, pen);
 
     textWnd = CreateWindowW(L"STATIC", L"info", WS_CHILD | WS_VISIBLE | SS_CENTER | WS_BORDER, 0, 0, 0, 0, hWnd, 0, hInst, nullptr);
     SetWindowTextW(textWnd, L"");
@@ -138,74 +142,64 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         // Any time we move or re-size, we refresh our view of the two screens and see which 
         // one is the "best" one for displaying some content, and then repaint
 
-        // Update the configuration of the screens
-        screenInfo.Update(hWnd);
-
-        // Figure out which screen has the most available space, and then move the
-        // simple status text to that screen
-        auto bestScreen = Shrink(screenInfo.GetRect(screenInfo.GetTallestOrWidestIndex()), MARGIN);
-        MoveWindow(textWnd, bestScreen.left, bestScreen.top, Width(bestScreen), TEXT_HEIGHT, TRUE);
+        // Update returns true if things have materially changed. Note that we still want to
+        // update our text since that includes 'immaterial' things like the window rect.
+        auto needRedraw{ screenInfo.Update(hWnd) };
 
         // Update our status text for new info
         static wchar_t buffer[500];
-        swprintf_s(buffer, L"Rects: %d%s, client area: %d x %d", screenInfo.GetRectCount(),
-            screenInfo.IsEmulating() ? L" (emu'ed)" : L"",
-            Width(screenInfo.GetWindowBounds()), Height(screenInfo.GetWindowBounds()));
+        auto client{ screenInfo.GetClientRect() };
+        auto window{ screenInfo.GetWindowRect() };
+
+        swprintf_s(buffer, L"%d rects%s, client:%dx%d, window:%dx%d@(%d,%d)", screenInfo.GetRectCount(),
+            screenInfo.IsEmulating() ? L" (emu)" : L"",
+            Width(client), Height(client),
+            Width(window), Height(window), window.left, window.top);
+
         SetWindowText(textWnd, buffer);
 
-        // Force re-draw
-        InvalidateRect(hWnd, nullptr, true);
+        if (needRedraw)
+        {
+            // Figure out which screen has the most available space, and then move the
+            // simple status text to that screen
+            auto bestScreen = Shrink(screenInfo.GetRect(screenInfo.GetBestIndexForHorizontalContent()), MARGIN);
+            MoveWindow(textWnd, bestScreen.left, bestScreen.top, Width(bestScreen), TEXT_HEIGHT, TRUE);
+
+            InvalidateRect(hWnd, nullptr, true);
+        }
         break;
     }
     case WM_PAINT:
     {
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hWnd, &ps);
-        HBRUSH brush{};
 
-        auto oldFont = SelectObject(hdc, font);
-        auto oldPen = SelectObject(hdc, pen);
         for (unsigned int i = 0; i < screenInfo.GetRectCount(); ++i)
         {
-            auto thisRect(screenInfo.GetRect(i));
-
-            if (i % 2)
-            {
-                brush = CreateSolidBrush(RGB(255, 255, 0));
-            }
-            else
-            {
-                brush = CreateSolidBrush(RGB(0, 255, 255));
-            }
+            auto thisRect{ screenInfo.GetRect(i) };
 
             static wchar_t buffer[500];
-            swprintf_s(buffer, L"Rect #%d, size: %d x %d\r\n(%d, %d) - (%d, %d)",
+            swprintf_s(buffer, L"Rect %d, size: %d x %d\r\n(%d, %d) - (%d, %d)",
                 i, Width(thisRect), Height(thisRect),
-                thisRect.left, thisRect.top, thisRect.right - 1, thisRect.bottom - 1);
+                thisRect.left, thisRect.top, thisRect.right, thisRect.bottom);
 
-
-            // Shrink the rect for a bit of a margin
             auto shrunkRect = Shrink(thisRect, MARGIN);
 
-            // Add space for the heading text unless we're on the bottom-screen of a dual-
-            // screen device
-            if (!(i == 1 && screenInfo.GetSplitKind() == SplitKind::Horizontal))
+            // Add space for the heading text if necessary (it's always drawn in the "best" rect)
+            if (i == screenInfo.GetBestIndexForHorizontalContent())
             {
                 shrunkRect.top += TEXT_HEIGHT + MARGIN;
             }
 
-            auto oldBrush = SelectObject(hdc, brush);
+            // Blue or yellow brush?
+            SelectObject(hdc, (i % 2) ? oddBrush : evenBrush);
             Rectangle(hdc, shrunkRect.left, shrunkRect.top, shrunkRect.right, shrunkRect.bottom);
 
             // Shrink again for another margin
             shrunkRect = Shrink(shrunkRect, MARGIN);
             DrawTextW(hdc, buffer, (int)wcslen(buffer), &shrunkRect, DT_CENTER);
-
-            SelectObject(hdc, oldBrush);
-            DeleteObject(brush);
         }
-        SelectObject(hdc, oldFont);
-        SelectObject(hdc, oldPen);
+
         EndPaint(hWnd, &ps);
     }
     case WM_COMMAND:
@@ -217,11 +211,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             DestroyWindow(hWnd);
             break;
 
-        case ID_HELP_ABOUT:
+        case IDM_HELP_ABOUT:
             MessageBoxA(hWnd, (std::string("Build timestamp: ") + __TIMESTAMP__).c_str(), "About App", MB_OK);
             break;
 
-        case ID_TOOLS_TOGGLEMODES:
+        case IDM_TOOLS_TOGGLEMODES:
         {
             bool currentlyEmulating{ screenInfo.IsEmulating() };
             bool actuallyMultipleScreens{ ScreenInfo::AreMultipleScreensPresent() };
