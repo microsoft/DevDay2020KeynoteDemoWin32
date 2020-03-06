@@ -81,7 +81,8 @@ bool ScreenInfo::Update(HWND hWnd) noexcept // if we OOM on a RECT alloc, we're 
         }
     }
 
-    return !snapshot.IsSameAs(m_contentRects, m_clientRect);
+    // No redraw needed if zero rects (minimized) or nothing has materially changed.
+    return newRectCount > 0 && !snapshot.IsSameAs(m_contentRects, m_clientRect);
 }
 
 unsigned int ScreenInfo::GetRectCount() const
