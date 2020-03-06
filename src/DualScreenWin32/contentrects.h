@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <vector>
+#include <algorithm> // for std::min
 
 // Version of the API to use when the OS-provided API isn't available
 namespace polyfill
@@ -10,9 +11,16 @@ namespace polyfill
     {
         BOOL CALLBACK CountWindowsCallback(const HMONITOR monitor, const HDC dc, const LPRECT rect, LPARAM param)
         {
-            auto rects = (std::vector<RECT>*)param;
-            rects->push_back(*rect);
-            return TRUE;
+            try
+            {
+                auto rects = (std::vector<RECT>*)param;
+                rects->push_back(*rect);
+                return TRUE;
+            }
+            catch (const std::bad_alloc&)
+            {
+                return FALSE;
+            }
         }
     }
 
@@ -33,13 +41,22 @@ namespace polyfill
         rects.reserve(2); // Assume 2 screens will cover most cases. It's OK if it resizes later.
 
         auto hDc = GetDC(hwnd);
-        EnumDisplayMonitors(hDc, nullptr, details::CountWindowsCallback, (LPARAM)&rects);
+        result = EnumDisplayMonitors(hDc, nullptr, details::CountWindowsCallback, (LPARAM)&rects);
         ReleaseDC(hwnd, hDc);
+
+        // Enum failed, maybe due to OOM
+        if (!result)
+        {
+            return result;
+        }
 
         // Copy as many rects as we have room for; if there are more than
         // will fit we return FALSE with ERROR_MORE_DATA.
-        for (unsigned int i = 0; i < min(*count, rects.size()); ++i)
+        for (unsigned int i = 0; i < std::min<UINT>(*count, static_cast<UINT>(rects.size())); ++i)
         {
+            // Warning C6011: Dereferencing NULL pointer 'pContentRects'
+            // If pContentRects is null, then *count must be zero (see checks at
+            // start of function) so this loop never runs. 
             pContentRects[i] = rects[i];
         }
 
@@ -54,7 +71,7 @@ namespace polyfill
             result = TRUE;
         }
 
-        *count = rects.size();
+        *count = static_cast<UINT>(rects.size());
         return result;
     }
 }

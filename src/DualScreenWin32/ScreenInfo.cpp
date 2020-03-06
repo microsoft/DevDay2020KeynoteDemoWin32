@@ -16,7 +16,7 @@ ScreenInfo::ScreenInfo()
 }
 
 // Call whenever the size or position of the app changes.
-bool ScreenInfo::Update(HWND hWnd)
+bool ScreenInfo::Update(HWND hWnd) noexcept // if we OOM on a RECT alloc, we're in bad shape...
 {
     auto snapshot{ GetSnapshot() };
 
@@ -28,30 +28,37 @@ bool ScreenInfo::Update(HWND hWnd)
         return ComputeEmulatedScreens(snapshot);
     }
 
-    unsigned int newRectCount{ (unsigned)m_contentRects.capacity() };
-    while (GetContentRects(hWnd, &newRectCount, m_contentRects.data()) == FALSE)
+    std::vector<RECT> updatedRects{ 2 };
+    auto newRectCount{ static_cast<unsigned>(updatedRects.size()) };
+
+    while (GetContentRects(hWnd, &newRectCount, updatedRects.data()) == FALSE)
     {
         // Only expected error is "you need a bigger array" - otherwise
         // we will revert to GetClientRect.
         if (GetLastError() != ERROR_MORE_DATA)
         {
             newRectCount = 1;
-            m_contentRects[0] = m_clientRect;
+            updatedRects[0] = m_clientRect;
             break;
         }
 
         // Re-allocate, and try again.
-        m_contentRects.reserve(newRectCount);
+        updatedRects.resize(newRectCount);
     }
 
     // Delete any no-longer-needed rects.
-    m_contentRects.resize(newRectCount);
+    if (newRectCount < updatedRects.size())
+    {
+        updatedRects.resize(newRectCount);
+    }
 
     // Make sure they're always in logical order
-    if (m_contentRects.size() > 1)
+    if (newRectCount > 1)
     {
-        std::stable_sort(begin(m_contentRects), end(m_contentRects), [](auto& r1, auto& r2) { return IsBefore(r1, r2); });
+        std::sort(begin(updatedRects), end(updatedRects), [](const auto& r1, const auto& r2) { return IsBefore(r1, r2); });
     }
+
+    m_contentRects = updatedRects;
 
     m_splitKind = SplitKind::Unknown;
 
@@ -74,18 +81,17 @@ bool ScreenInfo::Update(HWND hWnd)
         }
     }
 
-    return !snapshot.IsSameAs(GetSnapshot());
+    return !snapshot.IsSameAs(m_contentRects, m_clientRect);
 }
 
 unsigned int ScreenInfo::GetRectCount() const
 {
-    return m_contentRects.size();
+    return static_cast<unsigned int>(m_contentRects.size());
 }
 
 RECT ScreenInfo::GetRect(unsigned int index) const
 {
-    _ASSERT_EXPR(index >= 0 && index < GetRectCount(), "Invalid index passed");
-    return m_contentRects.data()[index];
+    return m_contentRects[index];
 }
 
 bool ScreenInfo::AreMultipleScreensPresent()
@@ -120,7 +126,7 @@ int ScreenInfo::GetWidestIndex() const
     int best{ -1 };
     for (unsigned int i = 0; i < GetRectCount(); ++i)
     {
-        auto thisWidth{ Width(m_contentRects.data()[i]) };
+        auto thisWidth{ RectWidth(m_contentRects[i]) };
         if (thisWidth > width)
         {
             width = thisWidth;
@@ -139,7 +145,7 @@ int ScreenInfo::GetTallestIndex() const
     int best{ -1 };
     for (unsigned int i = 0; i < GetRectCount(); ++i)
     {
-        auto thisHeight{ Height(m_contentRects.data()[i]) };
+        auto thisHeight{ RectHeight(m_contentRects[i]) };
         if (thisHeight > height)
         {
             height = thisHeight;
@@ -166,7 +172,7 @@ int ScreenInfo::GetIndexForRect(LPRECT rect) const
     RECT dummy{};
     for (unsigned int i = 0; i < GetRectCount(); ++i)
     {
-        if (IntersectRect(&dummy, &m_contentRects.data()[i], rect))
+        if (IntersectRect(&dummy, &m_contentRects[i], rect))
         {
             return i;
         }
@@ -208,13 +214,13 @@ bool ScreenInfo::ComputeEmulatedScreens(const ScreenInfo::Snapshot& snapshot)
 
     if (m_splitKind == SplitKind::Horizontal)
     {
-        width = Width(m_clientRect);
-        height = yDelta = Height(m_clientRect) / m_emulatedScreenCount;
+        width = RectWidth(m_clientRect);
+        height = yDelta = RectHeight(m_clientRect) / m_emulatedScreenCount;
     }
     else
     {
-        height = Height(m_clientRect);
-        width = xDelta = Width(m_clientRect) / m_emulatedScreenCount;
+        height = RectHeight(m_clientRect);
+        width = xDelta = RectWidth(m_clientRect) / m_emulatedScreenCount;
     }
 
     m_contentRects = std::vector<RECT>(m_emulatedScreenCount);
@@ -222,7 +228,7 @@ bool ScreenInfo::ComputeEmulatedScreens(const ScreenInfo::Snapshot& snapshot)
     int leftX{ 0 }, topY{ 0 }, rightX{ width }, bottomY{ height };
     for (int i = 0; i < m_emulatedScreenCount; ++i)
     {
-        m_contentRects.data()[i] = RECT{ leftX, topY, rightX, bottomY };
+        m_contentRects[i] = RECT{ leftX, topY, rightX, bottomY };
 
         // TODO: deal with emulating non-uniform values. Not a concern for
         // current emulation needs.
@@ -249,19 +255,24 @@ ScreenInfo::Snapshot::Snapshot(const std::vector<RECT>& rects, const RECT& clien
 
 bool ScreenInfo::Snapshot::IsSameAs(const Snapshot& other) const
 {
-    if (!EqualRect(&m_clientRect, &other.m_clientRect))
+    return IsSameAs(other.m_contentRects, other.m_clientRect);
+}
+
+bool ScreenInfo::Snapshot::IsSameAs(const std::vector<RECT>& other_rects, const RECT& other_clientRect) const
+{
+    if (!EqualRect(&m_clientRect, &other_clientRect))
     {
         return false;
     }
 
-    if (m_contentRects.size() != other.m_contentRects.size())
+    if (m_contentRects.size() != other_rects.size())
     {
         return false;
     }
 
     for (int i = 0; i < m_contentRects.size(); ++i)
     {
-        if (!EqualRect(&m_contentRects[i], &other.m_contentRects[i]))
+        if (!EqualRect(&m_contentRects[i], &other_rects[i]))
         {
             return false;
         }

@@ -3,20 +3,17 @@
 
 namespace dual_screen
 {
-    inline int Width(const RECT& rect) { return rect.right - rect.left; }
-    inline int Height(const RECT& rect) { return rect.bottom - rect.top; }
-    inline RECT Shrink(const RECT& rect, int margin) { return { rect.left + margin, rect.top + margin, rect.right - margin, rect.bottom - margin }; }
+    inline int RectWidth(const RECT& rect) { return rect.right - rect.left; }
+    inline int RectHeight(const RECT& rect) { return rect.bottom - rect.top; }
 
+    // Is the 'rect' argument logically before (left of / above) the 'comparedTo' argument?
+    // Unclear if this should be LTR aware.
     inline bool IsBefore(const RECT& rect, const RECT& comparedTo)
     {
-        if (rect.top == comparedTo.top)
-        {
-            return rect.left < comparedTo.left;
-        }
-        else
-        {
-            return rect.top < comparedTo.top;
-        };
+        auto a{ std::pair<LONG, LONG>(rect.top, rect.left) };
+        auto b{ std::pair<LONG, LONG>(comparedTo.top, comparedTo.left) };
+
+        return a < b;
     }
 
     // Kind of split between different regions.
@@ -48,7 +45,7 @@ namespace dual_screen
         int GetBestIndexForHorizontalContent() const;
 
         // Returns true if layout has materially changed.
-        bool Update(HWND hWnd);
+        bool Update(HWND hWnd) noexcept;
 
         Snapshot GetSnapshot() const;
         bool HasConfigurationChanged(const Snapshot& other) const;
@@ -63,6 +60,7 @@ namespace dual_screen
             friend struct ScreenInfo;
 
             Snapshot(const std::vector<RECT>& rects, const RECT& clientRect);
+            bool IsSameAs(const std::vector<RECT>& other_rects, const RECT& other_clientRect) const;
             bool IsSameAs(const Snapshot& other) const;
 
             RECT m_clientRect{ 0 };

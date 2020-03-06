@@ -15,8 +15,7 @@ using namespace dual_screen;
 ScreenInfo screenInfo{};
 HWND hwnd;
 HWND textWnd;
-HBRUSH oddBrush;
-HBRUSH evenBrush;
+HFONT font;
 
 #pragma region Default project template stuff
 
@@ -73,7 +72,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 
     wcex.cbSize = sizeof(WNDCLASSEX);
 
-    wcex.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
+    wcex.style = CS_HREDRAW | CS_VREDRAW;
     wcex.lpfnWndProc = WndProc;
     wcex.cbClsExtra = 0;
     wcex.cbWndExtra = 0;
@@ -110,15 +109,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
         return FALSE;
     }
 
-    HFONT font = CreateFontA(FONT_SIZE, 0, 0, 0, 100, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, "Consolas");
-    HPEN pen = CreatePen(PS_SOLID, 2, RGB(128, 128, 128));
-    oddBrush = CreateSolidBrush(RGB(255, 255, 0));
-    evenBrush = CreateSolidBrush(RGB(0, 255, 255));
-
-    // CS_OWNDC; can select once then leave them.
-    HDC hDc = GetDC(hWnd);
-    SelectObject(hDc, font);
-    SelectObject(hDc, pen);
+    font = CreateFontA(FONT_SIZE, 0, 0, 0, 100, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, "Consolas");
 
     textWnd = CreateWindowW(L"STATIC", L"info", WS_CHILD | WS_VISIBLE | SS_CENTER | WS_BORDER, 0, 0, 0, 0, hWnd, 0, hInst, nullptr);
     SetWindowTextW(textWnd, L"");
@@ -153,8 +144,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
         swprintf_s(buffer, L"%d rects%s, client:%dx%d, window:%dx%d@(%d,%d)", screenInfo.GetRectCount(),
             screenInfo.IsEmulating() ? L" (emu)" : L"",
-            Width(client), Height(client),
-            Width(window), Height(window), window.left, window.top);
+            RectWidth(client), RectHeight(client),
+            RectWidth(window), RectHeight(window), window.left, window.top);
 
         SetWindowText(textWnd, buffer);
 
@@ -162,8 +153,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         {
             // Figure out which screen has the most available space, and then move the
             // simple status text to that screen
-            auto bestScreen = Shrink(screenInfo.GetRect(screenInfo.GetBestIndexForHorizontalContent()), MARGIN);
-            MoveWindow(textWnd, bestScreen.left, bestScreen.top, Width(bestScreen), TEXT_HEIGHT, TRUE);
+            auto bestScreen = screenInfo.GetRect(screenInfo.GetBestIndexForHorizontalContent());
+            InflateRect(&bestScreen, -MARGIN, -MARGIN);
+            MoveWindow(textWnd, bestScreen.left, bestScreen.top, RectWidth(bestScreen), TEXT_HEIGHT, TRUE);
 
             InvalidateRect(hWnd, nullptr, true);
         }
@@ -174,16 +166,21 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hWnd, &ps);
 
+        auto oldPen{ SelectObject(hdc, GetStockObject(DC_PEN)) };
+        auto oldFont{ SelectObject(hdc, font) };
+        auto oldBrush{ SelectObject(hdc, GetStockObject(DC_BRUSH)) };
+
         for (unsigned int i = 0; i < screenInfo.GetRectCount(); ++i)
         {
             auto thisRect{ screenInfo.GetRect(i) };
 
             static wchar_t buffer[500];
             swprintf_s(buffer, L"Rect %d, size: %d x %d\r\n(%d, %d) - (%d, %d)",
-                i, Width(thisRect), Height(thisRect),
+                i, RectWidth(thisRect), RectHeight(thisRect),
                 thisRect.left, thisRect.top, thisRect.right, thisRect.bottom);
 
-            auto shrunkRect = Shrink(thisRect, MARGIN);
+            auto shrunkRect{ thisRect };
+            InflateRect(&shrunkRect, -MARGIN, -MARGIN);
 
             // Add space for the heading text if necessary (it's always drawn in the "best" rect)
             if (i == screenInfo.GetBestIndexForHorizontalContent())
@@ -191,14 +188,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                 shrunkRect.top += TEXT_HEIGHT + MARGIN;
             }
 
-            // Blue or yellow brush?
-            SelectObject(hdc, (i % 2) ? oddBrush : evenBrush);
+            // Blue or yellow brushes?
+            SetDCBrushColor(hdc, (i % 2) ? RGB(255, 255, 0) : RGB(0, 255, 255));
+            SetDCPenColor(hdc, (i % 2) ? RGB(128, 128, 0) : RGB(0, 128, 128));;
             Rectangle(hdc, shrunkRect.left, shrunkRect.top, shrunkRect.right, shrunkRect.bottom);
 
             // Shrink again for another margin
-            shrunkRect = Shrink(shrunkRect, MARGIN);
-            DrawTextW(hdc, buffer, (int)wcslen(buffer), &shrunkRect, DT_CENTER);
+            InflateRect(&shrunkRect, -MARGIN, -MARGIN);
+            DrawTextW(hdc, buffer, -1, &shrunkRect, DT_CENTER);
         }
+
+        SelectObject(hdc, oldPen);
+        SelectObject(hdc, oldFont);
+        SelectObject(hdc, oldBrush);
 
         EndPaint(hWnd, &ps);
     }
@@ -273,6 +275,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     }
     case WM_DESTROY:
     {
+        DeleteObject(font);
         PostQuitMessage(0);
         break;
     }
