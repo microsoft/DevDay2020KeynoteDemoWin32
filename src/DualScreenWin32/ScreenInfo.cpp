@@ -38,7 +38,7 @@ bool ScreenInfo::Update(HWND hWnd) noexcept // if we OOM on a RECT alloc, we're 
         if (GetLastError() != ERROR_MORE_DATA)
         {
             newRectCount = 1;
-            updatedRects[0] = m_clientRect;
+            updatedRects = std::vector<RECT>{ m_clientRect };
             break;
         }
 
