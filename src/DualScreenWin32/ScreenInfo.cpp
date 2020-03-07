@@ -5,6 +5,11 @@
 
 using namespace dual_screen;
 
+inline bool operator==(const RECT& a, const RECT& b)
+{
+    return EqualRect(&a, &b);
+}
+
 // ScreenInfo is a helper class that provides an abstraction over
 // the content rects API.
 
@@ -261,23 +266,5 @@ bool ScreenInfo::Snapshot::IsSameAs(const Snapshot& other) const
 
 bool ScreenInfo::Snapshot::IsSameAs(const std::vector<RECT>& other_rects, const RECT& other_clientRect) const
 {
-    if (!EqualRect(&m_clientRect, &other_clientRect))
-    {
-        return false;
-    }
-
-    if (m_contentRects.size() != other_rects.size())
-    {
-        return false;
-    }
-
-    for (int i = 0; i < m_contentRects.size(); ++i)
-    {
-        if (!EqualRect(&m_contentRects[i], &other_rects[i]))
-        {
-            return false;
-        }
-    }
-
-    return true;
+    return m_clientRect == other_clientRect && m_contentRects == other_rects;
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include <tuple>
 
 namespace dual_screen
 {
@@ -7,13 +8,9 @@ namespace dual_screen
     inline int RectHeight(const RECT& rect) { return rect.bottom - rect.top; }
 
     // Is the 'rect' argument logically before (left of / above) the 'comparedTo' argument?
-    // Unclear if this should be LTR aware.
     inline bool IsBefore(const RECT& rect, const RECT& comparedTo)
     {
-        auto a{ std::pair<LONG, LONG>(rect.top, rect.left) };
-        auto b{ std::pair<LONG, LONG>(comparedTo.top, comparedTo.left) };
-
-        return a < b;
+        return std::tie(rect.top, rect.left) < std::tie(comparedTo.top, comparedTo.left);
     }
 
     // Kind of split between different regions.
