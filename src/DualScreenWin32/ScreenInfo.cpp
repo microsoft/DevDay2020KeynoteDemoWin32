@@ -1,74 +1,103 @@
 #include "stdafx.h"
 #include "ScreenInfo.h"
 #include "contentrects.h"
+#include <algorithm>
+
+using namespace dual_screen;
+
+inline bool operator==(const RECT& a, const RECT& b)
+{
+    return EqualRect(&a, &b);
+}
+
+// ScreenInfo is a helper class that provides an abstraction over
+// the content rects API.
 
 // The helper defaults to a maximum of 2 content rects. We will dynamically 
 // grow the array later if necessary.
-ScreenInfo::ScreenInfo() :
-    m_contentRectsCapacity{ 2 },
-    m_contentRects{ std::make_unique<RECT[]>(m_contentRectsCapacity) },
-    m_rectCount{ 0 }
-{}
+ScreenInfo::ScreenInfo()
+{
+    m_contentRects.reserve(2);
+}
 
 // Call whenever the size or position of the app changes.
-void ScreenInfo::Update(HWND hWnd)
+bool ScreenInfo::Update(HWND hWnd) noexcept // if we OOM on a RECT alloc, we're in bad shape...
 {
-    unsigned int newRectCount{ m_contentRectsCapacity };
-    BOOL result{ FALSE };
+    auto snapshot{ GetSnapshot() };
 
-    GetClientRect(hWnd, &m_windowBounds);
+    ::GetClientRect(hWnd, &m_clientRect);
+    ::GetWindowRect(hWnd, &m_windowRect);
 
-    // If we're emulating a multi-rect device, then don't try to 
-    // get the real info
     if (m_emulatedScreenCount > 0)
     {
-        ComputeEmulatedScreens();
-        return;
+        return ComputeEmulatedScreens(snapshot);
     }
 
-    do
-    {
-        result = GetContentRects(hWnd, &newRectCount, m_contentRects.get());
-        if (result == FALSE)
-        {
-            _ASSERT_EXPR(GetLastError() == ERROR_MORE_DATA, "Unknown failure for GetContentRects");
-            m_contentRects = std::make_unique<RECT[]>(newRectCount);
-            m_contentRectsCapacity = newRectCount;
-        }
-    } while (result == FALSE);
+    std::vector<RECT> updatedRects{ 2 };
+    auto newRectCount{ static_cast<unsigned>(updatedRects.size()) };
 
-    m_rectCount = newRectCount;
+    while (GetContentRects(hWnd, &newRectCount, updatedRects.data()) == FALSE)
+    {
+        // Only expected error is "you need a bigger array" - otherwise
+        // we will revert to GetClientRect.
+        if (GetLastError() != ERROR_MORE_DATA)
+        {
+            newRectCount = 1;
+            updatedRects = std::vector<RECT>{ m_clientRect };
+            break;
+        }
+
+        // Re-allocate, and try again.
+        updatedRects.resize(newRectCount);
+    }
+
+    // Delete any no-longer-needed rects.
+    if (newRectCount < updatedRects.size())
+    {
+        updatedRects.resize(newRectCount);
+    }
+
+    // Make sure they're always in logical order
+    if (newRectCount > 1)
+    {
+        std::sort(begin(updatedRects), end(updatedRects), [](const auto& r1, const auto& r2) { return IsBefore(r1, r2); });
+    }
+
+    m_contentRects = updatedRects;
+
     m_splitKind = SplitKind::Unknown;
 
-    if (m_rectCount == 1)
+    // Detect if this is a horizontal or vertical split - currently only useful for dual-screen
+    // apps with identical screens (e.g. won't handle a Desktop window spanning 3 monitors in random 
+    // placements).
+    if (GetRectCount() == 1)
     {
         m_splitKind = SplitKind::None;
     }
-    // Detect if this is a horizontal or vertical split. We don't bother trying to
-    // guess for more than two screens at this point.
-    else if (m_rectCount == 2)
+    else if (GetRectCount() == 2)
     {
-        if (m_contentRects.get()[1].left > 0)
+        if (GetRect(0).top == GetRect(1).top)
         {
             m_splitKind = SplitKind::Vertical;
         }
-        else if (m_contentRects.get()[1].top > 0)
+        else if (GetRect(0).left == GetRect(1).left)
         {
             m_splitKind = SplitKind::Horizontal;
         }
     }
+
+    // No redraw needed if zero rects (minimized) or nothing has materially changed.
+    return newRectCount > 0 && !snapshot.IsSameAs(m_contentRects, m_clientRect);
 }
 
-// Some of the helper methods...
 unsigned int ScreenInfo::GetRectCount() const
 {
-    return m_rectCount;
+    return static_cast<unsigned int>(m_contentRects.size());
 }
 
 RECT ScreenInfo::GetRect(unsigned int index) const
 {
-    _ASSERT_EXPR(index <= m_rectCount, "Invalid index passed");
-    return m_contentRects.get()[index];
+    return m_contentRects[index];
 }
 
 bool ScreenInfo::AreMultipleScreensPresent()
@@ -79,27 +108,31 @@ bool ScreenInfo::AreMultipleScreensPresent()
     return count > 1;
 }
 
-#pragma region other less-interesting helper methods
-
 SplitKind ScreenInfo::GetSplitKind() const
 {
     return m_splitKind;
 }
 
-RECT ScreenInfo::GetWindowBounds() const
+RECT ScreenInfo::GetClientRect() const
 {
-    return m_windowBounds;
+    return m_clientRect;
 }
+
+RECT ScreenInfo::GetWindowRect() const
+{
+    return m_windowRect;
+}
+
 
 // If the window is split vertically, we can choose to put content on the
 // screen that has the most pixels
 int ScreenInfo::GetWidestIndex() const
 {
     int width{ 0 };
-    int best{ 0 };
-    for (unsigned int i = 0; i < m_rectCount; ++i)
+    int best{ -1 };
+    for (unsigned int i = 0; i < GetRectCount(); ++i)
     {
-        auto thisWidth{ Width(m_contentRects.get()[i]) };
+        auto thisWidth{ RectWidth(m_contentRects[i]) };
         if (thisWidth > width)
         {
             width = thisWidth;
@@ -115,10 +148,10 @@ int ScreenInfo::GetWidestIndex() const
 int ScreenInfo::GetTallestIndex() const
 {
     int height{ 0 };
-    int best{ 0 };
-    for (unsigned int i = 0; i < m_rectCount; ++i)
+    int best{ -1 };
+    for (unsigned int i = 0; i < GetRectCount(); ++i)
     {
-        auto thisHeight{ Height(m_contentRects.get()[i]) };
+        auto thisHeight{ RectHeight(m_contentRects[i]) };
         if (thisHeight > height)
         {
             height = thisHeight;
@@ -129,22 +162,23 @@ int ScreenInfo::GetTallestIndex() const
     return best;
 }
 
-int ScreenInfo::GetTallestOrWidestIndex() const
+int ScreenInfo::GetBestIndexForHorizontalContent() const
 {
     if (m_splitKind == SplitKind::Vertical)
     {
         return GetWidestIndex();
     }
 
-    return GetTallestIndex();
+    // If horizontal split (or no split), prefer the top-most rect
+    return 0;
 }
 
 int ScreenInfo::GetIndexForRect(LPRECT rect) const
 {
     RECT dummy{};
-    for (unsigned int i = 0; i < m_rectCount; ++i)
+    for (unsigned int i = 0; i < GetRectCount(); ++i)
     {
-        if (IntersectRect(&dummy, &m_contentRects.get()[i], rect))
+        if (IntersectRect(&dummy, &m_contentRects[i], rect))
         {
             return i;
         }
@@ -165,34 +199,42 @@ void ScreenInfo::EmulateScreens(int screens, ::SplitKind splitKind)
     m_splitKind = splitKind;
 }
 
+ScreenInfo::Snapshot ScreenInfo::GetSnapshot() const
+{
+    return { m_contentRects, m_clientRect };
+}
+
+bool ScreenInfo::HasConfigurationChanged(const Snapshot& other) const
+{
+    return !other.IsSameAs(GetSnapshot());
+}
+
 const bool ScreenInfo::IsEmulating() const
 {
     return m_emulatedScreenCount > 0;
 }
 
-void ScreenInfo::ComputeEmulatedScreens()
+bool ScreenInfo::ComputeEmulatedScreens(const ScreenInfo::Snapshot& snapshot)
 {
     int xDelta{ 0 }, yDelta{ 0 }, width{ 0 }, height{ 0 };
 
     if (m_splitKind == SplitKind::Horizontal)
     {
-        width = Width(m_windowBounds);
-        height = yDelta = Height(m_windowBounds) / m_emulatedScreenCount;
+        width = RectWidth(m_clientRect);
+        height = yDelta = RectHeight(m_clientRect) / m_emulatedScreenCount;
     }
     else
     {
-        height = Height(m_windowBounds);
-        width = xDelta = Width(m_windowBounds) / m_emulatedScreenCount;
+        height = RectHeight(m_clientRect);
+        width = xDelta = RectWidth(m_clientRect) / m_emulatedScreenCount;
     }
 
-    m_contentRects = std::make_unique<RECT[]>(m_emulatedScreenCount);
-    m_rectCount = m_emulatedScreenCount;
-    m_contentRectsCapacity = m_emulatedScreenCount;
+    m_contentRects = std::vector<RECT>(m_emulatedScreenCount);
 
     int leftX{ 0 }, topY{ 0 }, rightX{ width }, bottomY{ height };
     for (int i = 0; i < m_emulatedScreenCount; ++i)
     {
-        m_contentRects.get()[i] = RECT{ leftX, topY, rightX, bottomY };
+        m_contentRects[i] = RECT{ leftX, topY, rightX, bottomY };
 
         // TODO: deal with emulating non-uniform values. Not a concern for
         // current emulation needs.
@@ -207,6 +249,22 @@ void ScreenInfo::ComputeEmulatedScreens()
             rightX += xDelta;
         }
     }
+
+    return !snapshot.IsSameAs(GetSnapshot());
 }
 
-#pragma endregion
+ScreenInfo::Snapshot::Snapshot(const std::vector<RECT>& rects, const RECT& clientRect) :
+    m_contentRects{ rects },
+    m_clientRect{ clientRect }
+{
+}
+
+bool ScreenInfo::Snapshot::IsSameAs(const Snapshot& other) const
+{
+    return IsSameAs(other.m_contentRects, other.m_clientRect);
+}
+
+bool ScreenInfo::Snapshot::IsSameAs(const std::vector<RECT>& other_rects, const RECT& other_clientRect) const
+{
+    return m_clientRect == other_clientRect && m_contentRects == other_rects;
+}

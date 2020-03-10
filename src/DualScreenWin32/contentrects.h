@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <vector>
+#include <algorithm> // for std::min
 
 // Version of the API to use when the OS-provided API isn't available
 namespace polyfill
@@ -8,28 +9,18 @@ namespace polyfill
 
     namespace details
     {
-        struct content_rects
-        {
-            unsigned int count;
-            std::vector<RECT> rects;
-
-            content_rects()
-            {
-                count = 0;
-
-                // Optimize for two screens.
-                rects.reserve(2);
-            }
-        };
-
         BOOL CALLBACK CountWindowsCallback(const HMONITOR monitor, const HDC dc, const LPRECT rect, LPARAM param)
         {
-            auto rects = (content_rects*)param;
-
-            ++rects->count;
-            rects->rects.push_back(*rect);
-
-            return TRUE;
+            try
+            {
+                auto rects = (std::vector<RECT>*)param;
+                rects->push_back(*rect);
+                return TRUE;
+            }
+            catch (const std::bad_alloc&)
+            {
+                return FALSE;
+            }
         }
     }
 
@@ -46,21 +37,30 @@ namespace polyfill
         }
 
         BOOL result{ FALSE };
-        details::content_rects rects;
+        std::vector<RECT> rects;
+        rects.reserve(2); // Assume 2 screens will cover most cases. It's OK if it resizes later.
 
         auto hDc = GetDC(hwnd);
-        EnumDisplayMonitors(hDc, nullptr, details::CountWindowsCallback, (LPARAM)&rects);
+        result = EnumDisplayMonitors(hDc, nullptr, details::CountWindowsCallback, (LPARAM)&rects);
         ReleaseDC(hwnd, hDc);
 
-        _ASSERTE(rects.count > 0);
+        // Enum failed, maybe due to OOM
+        if (!result)
+        {
+            return result;
+        }
 
         // Copy as many rects as we have room for; if there are more than
         // will fit we return FALSE with ERROR_MORE_DATA.
-        for (unsigned int i = 0; i < min(*count, rects.count); ++i)
+        for (unsigned int i = 0; i < std::min<UINT>(*count, static_cast<UINT>(rects.size())); ++i)
         {
-            pContentRects[i] = rects.rects[i];
+            // Warning C6011: Dereferencing NULL pointer 'pContentRects'
+            // If pContentRects is null, then *count must be zero (see checks at
+            // start of function) so this loop never runs. 
+            pContentRects[i] = rects[i];
         }
-        if (*count < rects.count)
+
+        if (*count < rects.size())
         {
             SetLastError(ERROR_MORE_DATA);
             result = FALSE;
@@ -71,7 +71,7 @@ namespace polyfill
             result = TRUE;
         }
 
-        *count = rects.count;
+        *count = static_cast<UINT>(rects.size());
         return result;
     }
 }
@@ -84,12 +84,16 @@ BOOL WINAPI GetContentRects(HWND hwnd, UINT* count, RECT* pContentRects)
     // same value into the pointer. The answer can't change at runtime.
     if (impl == nullptr)
     {
-        // These are subject to change... 
-        auto module = LoadLibraryA("user32.dll");
-        if (module != 0)
-        {
-            impl = (polyfill::GetContentRects_t*)GetProcAddress(module, "GetContentRects");
-        }
+        // FYI only, eventually there will be an actual platform API to call, and we
+        // can invoke it directly. But since the name & shape of the API are subject
+        // to change, we won't actually try to use it yet (in case the name stays the
+        // same but the ABI changes).
+
+        // auto module = LoadLibraryA("user32.dll");
+        // if (module != 0)
+        // {
+        //     impl = (polyfill::GetContentRects_t*)GetProcAddress(module, "GetContentRects");
+        // }
 
         if (impl == nullptr)
         {
