@@ -10,9 +10,107 @@ inline bool operator==(const RECT& a, const RECT& b)
     return EqualRect(&a, &b);
 }
 
+enum class Direction
+{
+    Horizontal,
+    Vertical
+};
+
+// Returns the first rect (if any) from 'rects' that is adjacent to the given 'rect' in
+// the specified direction. It only considers rects that are cleanly cut into two pieces;
+// it doesn't work with a window spanning (eg) all 3 monitors in a "T" formation.
+RECT* GetAdjacentRect(const RECT& rect, std::vector<RECT>& rects, Direction direction)
+{
+    auto result = std::find_if(std::begin(rects), std::end(rects), [direction, &rect](const auto& r)
+        {
+            if (direction == Direction::Horizontal)
+            {
+                // Same vertical size & position, adjacent 'x'
+                if ((r.top == rect.top && r.bottom == rect.bottom) &&
+                    (r.right == rect.left || r.left == rect.right))
+                {
+                    return true;
+                }
+            }
+            else
+            {
+                // Same horizontal size & position, adjacent 'y'
+                if ((r.left == rect.left && r.right == rect.right) &&
+                    (r.bottom == rect.top || r.top == rect.bottom))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        });
+
+    if (result == std::end(rects))
+    {
+        return nullptr;
+    }
+
+    return &*result;
+}
+
+// Check if any of the rects are "too small" to matter, in which case we just bundle them
+// up with an adjacent rect. For example, if you have a window that is just barely straddling
+// two monitors, you might not want re-layout for the few pixels that are on the second monitor.
+void CollapseSmallRects(std::vector<RECT>& rects, int minRectSize)
+{
+    for (unsigned i = 0; i < rects.size(); ++i)
+    {
+        auto& thisRect = rects[i];
+        RECT* targetRect{ nullptr };
+
+        // Rect is too thin and we can find an adjacent rect...
+        if ((RectWidth(thisRect) < minRectSize) &&
+            (nullptr != (targetRect = GetAdjacentRect(thisRect, rects, Direction::Horizontal))))
+        {
+            // target is to the left -- inflate the right
+            if (*targetRect < thisRect)
+            {
+                targetRect->right = thisRect.right;
+            }
+            else
+            {
+                targetRect->left = thisRect.left;
+            }
+
+            // Make this zero-width so we can delete later
+            thisRect.left = thisRect.right = 0;
+        }
+
+        // Rect is too short and we can find an adjacent rect...
+        else if ((RectHeight(thisRect) < minRectSize) &&
+                (nullptr != (targetRect = GetAdjacentRect(thisRect, rects, Direction::Vertical))))
+        {
+            // target is above -- inflate the bottom
+            if (*targetRect < thisRect)
+            {
+                targetRect->bottom = thisRect.bottom;
+            }
+            else
+            {
+                targetRect->top = thisRect.top;
+            }
+
+            // Make this zero-width so we can delete later
+            thisRect.top = thisRect.bottom = 0;
+        }
+    }
+
+    // Now delete all zero-size rects
+    auto end = std::remove_if(std::begin(rects), std::end(rects), [](auto& r)
+        {
+            return (RectWidth(r) == 0 || RectHeight(r) == 0);
+        });
+
+    rects.erase(end, std::end(rects));
+}
+
 // ScreenInfo is a helper class that provides an abstraction over
 // the content rects API.
-
 // The helper defaults to a maximum of 2 content rects. We will dynamically 
 // grow the array later if necessary.
 ScreenInfo::ScreenInfo()
@@ -57,10 +155,15 @@ bool ScreenInfo::Update(HWND hWnd) noexcept // if we OOM on a RECT alloc, we're 
         updatedRects.resize(newRectCount);
     }
 
-    // Make sure they're always in logical order
+    // Make sure they're always in logical order and ignore any small slivers
     if (newRectCount > 1)
     {
-        std::sort(begin(updatedRects), end(updatedRects), [](const auto& r1, const auto& r2) { return IsBefore(r1, r2); });
+        std::sort(std::begin(updatedRects), std::end(updatedRects), [](const auto& r1, const auto& r2) { return r1 < r2; });
+        
+        if (GetMinRectSize() > 0)
+        {
+            CollapseSmallRects(updatedRects, GetMinRectSize());
+        }
     }
 
     m_contentRects = updatedRects;
@@ -212,6 +315,16 @@ bool ScreenInfo::HasConfigurationChanged(const Snapshot& other) const
 const bool ScreenInfo::IsEmulating() const
 {
     return m_emulatedScreenCount > 0;
+}
+
+void ScreenInfo::SetMinRectSize(int minSize)
+{
+    m_minSizeForRect = minSize;
+}
+
+int ScreenInfo::GetMinRectSize() const
+{
+    return m_minSizeForRect;
 }
 
 bool ScreenInfo::ComputeEmulatedScreens(const ScreenInfo::Snapshot& snapshot)

@@ -8,9 +8,9 @@ namespace dual_screen
     inline int RectHeight(const RECT& rect) { return rect.bottom - rect.top; }
 
     // Is the 'rect' argument logically before (left of / above) the 'comparedTo' argument?
-    inline bool IsBefore(const RECT& rect, const RECT& comparedTo)
+    inline bool operator<(const RECT& left, const RECT& right)
     {
-        return std::tie(rect.top, rect.left) < std::tie(comparedTo.top, comparedTo.left);
+        return std::tie(left.top, left.left) < std::tie(right.top, right.left);
     }
 
     // Kind of split between different regions.
@@ -38,6 +38,9 @@ namespace dual_screen
         int GetIndexForRect(LPRECT rect) const;
         int GetWidestIndex() const;
         int GetTallestIndex() const;
+
+        void SetMinRectSize(int minSize);
+        int GetMinRectSize() const;
 
         int GetBestIndexForHorizontalContent() const;
 
@@ -70,6 +73,9 @@ namespace dual_screen
         RECT m_clientRect{ 0 };
         RECT m_windowRect{ 0 };
         std::vector<RECT> m_contentRects;
+
+        // Default to "less than 200px is useless for layout" - can be overridden.
+        int m_minSizeForRect{ 200 };
 
         int m_emulatedScreenCount{ -1 };
         bool ComputeEmulatedScreens(const Snapshot& snapshot);
